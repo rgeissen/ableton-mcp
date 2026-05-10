@@ -46,8 +46,6 @@ Then call `get_track_info` for relevant tracks to inspect clips, devices, volume
 | `get_playback_position` | Current beat position + is_playing state | — |
 | `get_scale_mode` | Get current root note, root note name, and scale name | — |
 | `set_scale_mode` | Set root note, scale name, and/or in-key highlighting | `root_note` (0–11), `scale_name`, `in_key` (bool) |
-| `save_set` | Save the Live set in place (Ctrl+S) | — |
-| `save_set_as` | Save to a new file path (versioned save) | `file_path` (absolute, include .als) |
 | `undo` | Undo the last action | — |
 
 ### Tracks
@@ -203,15 +201,6 @@ get_device_params(track_index=2, device_index=0)
 set_device_param(track_index=2, device_index=0, param_index=5, value=2500.0)
 ```
 
-### Save versioned snapshots at milestones
-```
-save_set_as("/Users/me/Music/Ableton/Projects/DeepHouse_BMinor_v01.als")
-→ saves current state to a new file; original set remains open in Live
-
-# Later, after more work:
-save_set_as("/Users/me/Music/Ableton/Projects/DeepHouse_BMinor_v02.als")
-```
-
 ---
 
 ## Notes & Caveats
@@ -223,7 +212,7 @@ save_set_as("/Users/me/Music/Ableton/Projects/DeepHouse_BMinor_v02.als")
 - `set_device_param` values use the device's native range — always read `get_device_params` first
 - `load_drum_kit` requires both `rack_uri` (Drum Rack device URI) AND `kit_path` (preset path)
 - `delete_track` shifts all subsequent track indices — re-read session info after any deletion
-- `save_set_as` requires an absolute path including `.als` extension — Live stays open on the original file after saving
+- **Saving sets** is not supported — the Live Python API exposes no save method on the Song object. Use Cmd+S in Ableton directly.
 - `search_by_tags` reads Ableton's local database directly — Live does not need to be running
 - `search_by_tags` uses AND logic — each additional tag narrows results; start with one tag if unsure
 - `search_by_tags` returns a `browser_path` — pass it to `get_browser_items_at_path` to get the loadable URI

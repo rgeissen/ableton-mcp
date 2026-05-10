@@ -108,7 +108,7 @@ class AbletonConnection:
             "start_playback", "stop_playback", "load_instrument_or_effect",
             "set_track_mixer", "set_track_mute", "set_track_solo",
             "duplicate_clip", "delete_clip", "delete_track",
-            "set_device_param", "undo", "save_set"
+            "set_device_param", "undo", "save_set", "set_scale_mode"
         ]
         
         try:
@@ -895,6 +895,59 @@ def get_playback_position(ctx: Context) -> str:
     except Exception as e:
         logger.error(f"Error getting playback position: {str(e)}")
         return f"Error getting playback position: {str(e)}"
+
+
+@mcp.tool()
+def get_scale_mode(ctx: Context) -> str:
+    """Get the current scale mode settings (root note, scale name, and in-key state)."""
+    try:
+        ableton = get_ableton_connection()
+        result = ableton.send_command("get_scale_mode")
+        return json.dumps(result, indent=2)
+    except Exception as e:
+        logger.error(f"Error getting scale mode: {str(e)}")
+        return f"Error getting scale mode: {str(e)}"
+
+
+@mcp.tool()
+def set_scale_mode(
+    ctx: Context,
+    root_note: int = None,
+    scale_name: str = None,
+    in_key: bool = None
+) -> str:
+    """
+    Set the scale mode for the Ableton session.
+
+    Parameters:
+    - root_note: Root note as MIDI semitone 0–11 (0=C, 1=C#, 2=D, 3=D#, 4=E, 5=F,
+                 6=F#, 7=G, 8=G#, 9=A, 10=A#, 11=B). None = no change.
+    - scale_name: Name of the scale, e.g. 'Major', 'Minor', 'Dorian', 'Phrygian',
+                  'Lydian', 'Mixolydian', 'Locrian', 'Whole Tone', 'Minor Pentatonic',
+                  'Major Pentatonic', 'Harmonic Minor', 'Melodic Minor'. None = no change.
+    - in_key: True to enable in-key highlighting, False to disable. None = no change.
+    """
+    try:
+        ableton = get_ableton_connection()
+        params = {}
+        if root_note is not None:
+            params["root_note"] = root_note
+        if scale_name is not None:
+            params["scale_name"] = scale_name
+        if in_key is not None:
+            params["in_key"] = in_key
+        result = ableton.send_command("set_scale_mode", params)
+        parts = []
+        if "root_note_name" in result:
+            parts.append(f"root={result['root_note_name']}")
+        if "scale_name" in result:
+            parts.append(f"scale={result['scale_name']}")
+        if "in_key" in result:
+            parts.append(f"in_key={result['in_key']}")
+        return f"Scale mode updated: {', '.join(parts)}"
+    except Exception as e:
+        logger.error(f"Error setting scale mode: {str(e)}")
+        return f"Error setting scale mode: {str(e)}"
 
 
 # Main execution

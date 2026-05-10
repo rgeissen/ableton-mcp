@@ -232,7 +232,8 @@ class AbletonMCP(ControlSurface):
                                  "start_playback", "stop_playback", "load_browser_item",
                                  "create_audio_track", "set_track_mixer", "set_track_mute",
                                  "set_track_solo", "duplicate_clip", "delete_clip",
-                                 "delete_track", "set_device_param", "undo", "save_set"]:
+                                 "delete_track", "set_device_param", "undo", "save_set",
+                                 "set_scale_mode"]:
                 # Use a thread-safe approach with a response queue
                 response_queue = queue.Queue()
                 
@@ -324,6 +325,11 @@ class AbletonMCP(ControlSurface):
                             result = self._undo()
                         elif command_type == "save_set":
                             result = self._save_set()
+                        elif command_type == "set_scale_mode":
+                            root_note = params.get("root_note", None)
+                            scale_name = params.get("scale_name", None)
+                            in_key = params.get("in_key", None)
+                            result = self._set_scale_mode(root_note, scale_name, in_key)
 
                         # Put the result in the queue
                         response_queue.put({"status": "success", "result": result})
@@ -378,6 +384,8 @@ class AbletonMCP(ControlSurface):
                 response["result"] = self._get_device_params(track_index, device_index)
             elif command_type == "get_playback_position":
                 response["result"] = self._get_playback_position()
+            elif command_type == "get_scale_mode":
+                response["result"] = self._get_scale_mode()
             else:
                 response["status"] = "error"
                 response["message"] = "Unknown command: " + command_type
@@ -1082,6 +1090,53 @@ class AbletonMCP(ControlSurface):
             }
         except Exception as e:
             self.log_message("Error getting playback position: " + str(e))
+            raise
+
+    # Note names for converting root_note integer to string
+    _NOTE_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
+
+    def _get_scale_mode(self):
+        """Get the current scale mode settings"""
+        try:
+            result = {}
+            if hasattr(self._song, "root_note"):
+                root = int(self._song.root_note)
+                result["root_note"] = root
+                result["root_note_name"] = self._NOTE_NAMES[root % 12]
+            if hasattr(self._song, "scale_name"):
+                result["scale_name"] = self._song.scale_name
+            if hasattr(self._song, "in_key"):
+                result["in_key"] = self._song.in_key
+            if not result:
+                raise Exception("Scale mode properties not available in this Live version (requires Live 11+)")
+            return result
+        except Exception as e:
+            self.log_message("Error getting scale mode: " + str(e))
+            raise
+
+    def _set_scale_mode(self, root_note, scale_name, in_key):
+        """Set scale mode properties"""
+        try:
+            result = {}
+            if root_note is not None:
+                if not hasattr(self._song, "root_note"):
+                    raise Exception("root_note not available in this Live version (requires Live 11+)")
+                self._song.root_note = max(0, min(11, int(root_note)))
+                result["root_note"] = int(self._song.root_note)
+                result["root_note_name"] = self._NOTE_NAMES[int(self._song.root_note) % 12]
+            if scale_name is not None:
+                if not hasattr(self._song, "scale_name"):
+                    raise Exception("scale_name not available in this Live version (requires Live 11+)")
+                self._song.scale_name = scale_name
+                result["scale_name"] = self._song.scale_name
+            if in_key is not None:
+                if not hasattr(self._song, "in_key"):
+                    raise Exception("in_key not available in this Live version (requires Live 11+)")
+                self._song.in_key = bool(in_key)
+                result["in_key"] = self._song.in_key
+            return result
+        except Exception as e:
+            self.log_message("Error setting scale mode: " + str(e))
             raise
 
     def get_browser_tree(self, category_type="all"):

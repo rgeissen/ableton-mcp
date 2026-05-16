@@ -609,6 +609,31 @@ def get_browser_items_at_path(ctx: Context, path: str) -> str:
             return f"Error getting browser items at path: {error_msg}"
 
 @mcp.tool()
+def load_sound_by_path(ctx: Context, track_index: int, browser_path: str) -> str:
+    """
+    Load a sound directly onto a track using its browser_path (as returned by search_by_tags).
+    Navigates to the item and loads it in one step — no intermediate URI lookup needed.
+
+    Parameters:
+    - track_index:   The index of the track to load onto
+    - browser_path:  Full path as returned by search_by_tags
+                     (e.g. "packs/Analog Brass & Winds/Pads/Deep Space")
+    """
+    try:
+        ableton = get_ableton_connection()
+        result = ableton.send_command("load_browser_item_by_path", {
+            "track_index": track_index,
+            "browser_path": browser_path
+        })
+        if result.get("loaded"):
+            return f"Loaded '{result.get('item_name')}' on track {track_index}"
+        return f"Could not load item at '{browser_path}'"
+    except Exception as e:
+        logger.error(f"Error loading sound by path: {str(e)}")
+        return f"Error loading sound by path: {str(e)}"
+
+
+@mcp.tool()
 def load_drum_kit(ctx: Context, track_index: int, rack_uri: str, kit_path: str) -> str:
     """
     Load a drum rack and then load a specific drum kit into it.
@@ -1189,8 +1214,8 @@ def search_by_tags(
                 midi_effects, max_for_live, plugins, clips, samples, grooves, tunings
     - limit:    Maximum number of results to return (default 50).
 
-    Each result includes name, type, source (pack/library), all tags on that item,
-    and a browser_path you can pass to get_browser_items_at_path to load it.
+    Each result includes name, type, source, and a browser_path you can pass
+    to get_browser_items_at_path to obtain a live URI for loading.
     """
     try:
         if not tags:
@@ -1223,22 +1248,12 @@ def search_by_tags(
 
         results = []
         for file_id, name, file_type, device_id, source in rows:
-            # Fetch all tags on this file (not just the search tags)
-            item_tags = [r[0] for r in conn.execute("""
-                SELECT tag.name
-                FROM files tag
-                JOIN keywords k ON k.keyw_id = tag.file_id
-                WHERE k.file_id = ? AND tag.file_type = ?
-                ORDER BY tag.name
-            """, (file_id, _KEYW_TYPE)).fetchall()]
-
             browser_path = _reconstruct_browser_path(conn, file_id)
 
             results.append({
                 "name":         name,
                 "type":         _human_type(file_type, device_id or ""),
                 "source":       source or "unknown",
-                "tags":         item_tags,
                 "browser_path": browser_path,
             })
 
@@ -1247,6 +1262,7 @@ def search_by_tags(
             "query_tags": tags,
             "category":   category,
             "count":      len(results),
+            "hint":       "Pass the parent folder of browser_path to get_browser_items_at_path to get a live URI",
             "results":    results,
         }, indent=2)
 

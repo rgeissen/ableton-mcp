@@ -230,6 +230,7 @@ class AbletonMCP(ControlSurface):
                                  "create_clip", "add_notes_to_clip", "set_clip_name",
                                  "set_tempo", "fire_clip", "stop_clip",
                                  "start_playback", "stop_playback", "load_browser_item",
+                                 "load_browser_item_by_path",
                                  "create_audio_track", "set_track_mixer", "set_track_mute",
                                  "set_track_solo", "duplicate_clip", "delete_clip",
                                  "delete_track", "set_device_param", "undo",
@@ -286,6 +287,10 @@ class AbletonMCP(ControlSurface):
                             track_index = params.get("track_index", 0)
                             item_uri = params.get("item_uri", "")
                             result = self._load_browser_item(track_index, item_uri)
+                        elif command_type == "load_browser_item_by_path":
+                            track_index = params.get("track_index", 0)
+                            browser_path = params.get("browser_path", "")
+                            result = self._load_browser_item_by_path(track_index, browser_path)
                         elif command_type == "create_audio_track":
                             index = params.get("index", -1)
                             result = self._create_audio_track(index)
@@ -828,6 +833,50 @@ class AbletonMCP(ControlSurface):
             self.log_message(traceback.format_exc())
             raise
     
+    def _load_browser_item_by_path(self, track_index, browser_path):
+        """Navigate to an item by browser_path and load it onto a track."""
+        try:
+            if track_index < 0 or track_index >= len(self._song.tracks):
+                raise IndexError("Track index out of range")
+
+            app = self.application()
+            if not app:
+                raise RuntimeError("Could not access Live application")
+
+            path_parts = [p for p in browser_path.split("/") if p]
+            if not path_parts:
+                raise ValueError("Invalid browser_path")
+
+            root_category = path_parts[0].lower()
+            if not hasattr(app.browser, root_category):
+                raise ValueError("Unknown browser category: {0}".format(root_category))
+
+            current_item = getattr(app.browser, root_category)
+
+            for part in path_parts[1:]:
+                if not hasattr(current_item, 'children'):
+                    raise ValueError("Item has no children at this path level")
+                found = None
+                for child in current_item.children:
+                    if hasattr(child, 'name') and child.name.lower() == part.lower():
+                        found = child
+                        break
+                if found is None:
+                    raise ValueError("Path part '{0}' not found".format(part))
+                current_item = found
+
+            if not (hasattr(current_item, 'is_loadable') and current_item.is_loadable):
+                raise ValueError("Item at '{0}' is not loadable".format(browser_path))
+
+            track = self._song.tracks[track_index]
+            self._song.view.selected_track = track
+            app.browser.load_item(current_item)
+
+            return {"loaded": True, "item_name": current_item.name}
+        except Exception as e:
+            self.log_message("Error loading browser item by path: {0}".format(str(e)))
+            raise
+
     def _find_browser_item_by_uri(self, browser_or_item, uri, max_depth=10, current_depth=0):
         """Find a browser item by its URI"""
         try:
@@ -1268,14 +1317,9 @@ class AbletonMCP(ControlSurface):
             if not hasattr(app, 'browser') or app.browser is None:
                 raise RuntimeError("Browser is not available in the Live application")
             
-            # Log available browser attributes to help diagnose issues
-            browser_attrs = [attr for attr in dir(app.browser) if not attr.startswith('_')]
-            self.log_message("Available browser attributes: {0}".format(browser_attrs))
-            
             result = {
                 "type": category_type,
                 "categories": [],
-                "available_categories": browser_attrs
             }
             
             # Helper function to process a browser item and its children
@@ -1341,17 +1385,17 @@ class AbletonMCP(ControlSurface):
                 except Exception as e:
                     self.log_message("Error processing midi_effects: {0}".format(str(e)))
             
-            # Try to process other potentially available categories
-            for attr in browser_attrs:
-                if attr not in ['instruments', 'sounds', 'drums', 'audio_effects', 'midi_effects'] and \
-                   (category_type == "all" or category_type == attr):
+            extra_categories = ['samples', 'clips', 'grooves', 'packs', 'user_library', 'max_for_live', 'plugins']
+            for attr in extra_categories:
+                if category_type == "all" or category_type == attr:
+                    if not hasattr(app.browser, attr):
+                        continue
                     try:
                         item = getattr(app.browser, attr)
-                        if hasattr(item, 'children') or hasattr(item, 'name'):
-                            category = process_item(item)
-                            if category:
-                                category["name"] = attr.capitalize()
-                                result["categories"].append(category)
+                        category = process_item(item)
+                        if category:
+                            category["name"] = attr.capitalize()
+                            result["categories"].append(category)
                     except Exception as e:
                         self.log_message("Error processing {0}: {1}".format(attr, str(e)))
             
@@ -1386,50 +1430,29 @@ class AbletonMCP(ControlSurface):
             if not hasattr(app, 'browser') or app.browser is None:
                 raise RuntimeError("Browser is not available in the Live application")
             
-            # Log available browser attributes to help diagnose issues
-            browser_attrs = [attr for attr in dir(app.browser) if not attr.startswith('_')]
-            self.log_message("Available browser attributes: {0}".format(browser_attrs))
-                
             # Parse the path
             path_parts = path.split("/")
             if not path_parts:
                 raise ValueError("Invalid path")
-            
+
             # Determine the root category
             root_category = path_parts[0].lower()
             current_item = None
-            
-            # Check standard categories first
-            if root_category == "instruments" and hasattr(app.browser, 'instruments'):
-                current_item = app.browser.instruments
-            elif root_category == "sounds" and hasattr(app.browser, 'sounds'):
-                current_item = app.browser.sounds
-            elif root_category == "drums" and hasattr(app.browser, 'drums'):
-                current_item = app.browser.drums
-            elif root_category == "audio_effects" and hasattr(app.browser, 'audio_effects'):
-                current_item = app.browser.audio_effects
-            elif root_category == "midi_effects" and hasattr(app.browser, 'midi_effects'):
-                current_item = app.browser.midi_effects
+
+            known_categories = [
+                'instruments', 'sounds', 'drums', 'audio_effects', 'midi_effects',
+                'samples', 'clips', 'grooves', 'packs', 'user_library', 'max_for_live', 'plugins'
+            ]
+
+            if hasattr(app.browser, root_category):
+                current_item = getattr(app.browser, root_category)
             else:
-                # Try to find the category in other browser attributes
-                found = False
-                for attr in browser_attrs:
-                    if attr.lower() == root_category:
-                        try:
-                            current_item = getattr(app.browser, attr)
-                            found = True
-                            break
-                        except Exception as e:
-                            self.log_message("Error accessing browser attribute {0}: {1}".format(attr, str(e)))
-                
-                if not found:
-                    # If we still haven't found the category, return available categories
-                    return {
-                        "path": path,
-                        "error": "Unknown or unavailable category: {0}".format(root_category),
-                        "available_categories": browser_attrs,
-                        "items": []
-                    }
+                return {
+                    "path": path,
+                    "error": "Unknown or unavailable category: {0}".format(root_category),
+                    "available_categories": known_categories,
+                    "items": []
+                }
             
             # Navigate through the path
             for i in range(1, len(path_parts)):
@@ -1462,13 +1485,17 @@ class AbletonMCP(ControlSurface):
             items = []
             if hasattr(current_item, 'children'):
                 for child in current_item.children:
+                    is_folder = hasattr(child, 'children') and bool(child.children)
+                    child_name = child.name if hasattr(child, 'name') else "Unknown"
                     item_info = {
-                        "name": child.name if hasattr(child, 'name') else "Unknown",
-                        "is_folder": hasattr(child, 'children') and bool(child.children),
+                        "name": child_name,
+                        "is_folder": is_folder,
                         "is_device": hasattr(child, 'is_device') and child.is_device,
                         "is_loadable": hasattr(child, 'is_loadable') and child.is_loadable,
                         "uri": child.uri if hasattr(child, 'uri') else None
                     }
+                    if is_folder:
+                        item_info["path"] = path + "/" + child_name
                     items.append(item_info)
             
             result = {

@@ -84,10 +84,11 @@ Then call `get_track_info` for relevant tracks to inspect clips, devices, volume
 ### Browser
 | Tool | Purpose | Key params |
 |---|---|---|
-| `get_browser_tree` | List browser categories/folders | `category_type` (all / instruments / sounds / drums / audio_effects / midi_effects) |
-| `get_browser_items_at_path` | Drill into a folder to get loadable URIs | `path` ("category/folder/subfolder") |
+| `get_browser_tree` | List top-level browser categories | `category_type` (all / instruments / sounds / drums / audio_effects / midi_effects) |
+| `get_browser_items_at_path` | Drill into a folder — returns immediate children with `path` hints on subfolders | `path` ("category/folder/subfolder") |
 | `get_browser_tags` | List all tags available in the browser database | `category` (all / sounds / instruments / drums / audio_effects / midi_effects / max_for_live / plugins / clips / samples / grooves / tunings) |
 | `search_by_tags` | Search browser by tags (AND logic — item must have ALL tags) | `tags[]`, `category?`, `limit?` (default 50) |
+| `load_sound_by_path` | **Preferred load method.** Navigate directly to a browser_path and load onto a track — no URI lookup needed | `track_index`, `browser_path` |
 
 ---
 
@@ -181,13 +182,12 @@ constructing a `chain_path` step manually.
 1. get_session_info                     → note current track count
 2. create_midi_track                    → get new track index
 3. set_track_name
-4. get_browser_tree("instruments")      → find category
-5. get_browser_items_at_path            → get URI
-6. load_instrument_or_effect
-7. create_clip(length=8.0)              → 2-bar clip in slot 0
-8. add_notes_to_clip                    → write notes
-9. set_clip_name
-10. fire_clip
+4. search_by_tags(tags=["..."], category="instruments")  → find browser_path
+5. load_sound_by_path(track_index, browser_path)         → load in one step
+6. create_clip(length=8.0)              → 2-bar clip in slot 0
+7. add_notes_to_clip                    → write notes
+8. set_clip_name
+9. fire_clip
 ```
 
 ### Build a drum beat
@@ -200,17 +200,17 @@ constructing a `chain_path` step manually.
 6. fire_clip
 ```
 
-### Find and load an instrument by tag
+### Find and load a sound by tag
 ```
-1. get_browser_tags(category="instruments")   → see all available tags
-2. search_by_tags(tags=["Bass", "Synth"], category="instruments")
-   → returns [{name, type, source, tags, browser_path}, ...]
-3. get_browser_items_at_path(browser_path)    → get the loadable URI
-4. load_instrument_or_effect(track_index, uri)
+1. search_by_tags(tags=["pad", "warm"], category="sounds")
+   → returns [{name, type, source, browser_path}, ...]
+2. load_sound_by_path(track_index, browser_path)   ← use directly, no URI lookup needed
 ```
 
 Tag search uses AND logic — results must carry every tag supplied. Start broad (one tag)
-and narrow down. Use get_browser_tags first to avoid guessing tag names.
+and narrow down. Only call `get_browser_tags` if you need to discover what tags exist.
+
+### Mix a track
 ```
 set_track_mixer(track_index, volume=0.75, panning=-0.3)  → volume + pan together
 set_track_mute(track_index, mute=True)
@@ -284,7 +284,8 @@ set_device_param(is_master=True, device_index=0, param_index=0, value=0.8)
 - **Saving sets** is not supported — the Live Python API exposes no save method on the Song object. Use Cmd+S in Ableton directly.
 - `search_by_tags` reads Ableton's local database directly — Live does not need to be running
 - `search_by_tags` uses AND logic — each additional tag narrows results; start with one tag if unsure
-- `search_by_tags` returns a `browser_path` — pass it to `get_browser_items_at_path` to get the loadable URI
+- `search_by_tags` returns a `browser_path` — pass it directly to `load_sound_by_path`; never call `get_browser_items_at_path` just to retrieve a URI from a search result
+- `get_browser_items_at_path` folder children include a `path` hint — copy it unchanged into the next call, exactly like `chain_path` for devices
 - The MCP server must be running as a Remote Script in Live's MIDI preferences
 - `set_scale_mode` params are all optional — pass only what you want to change
 - `root_note` is 0–11: C=0, C#=1, D=2, D#=3, E=4, F=5, F#=6, G=7, G#=8, A=9, A#=10, B=11

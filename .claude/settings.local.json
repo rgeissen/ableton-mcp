@@ -23,7 +23,8 @@
       "Bash(mkdir -p /Users/livin2rave/my_private_code/ableton-mcp/.claude/skills/ableton-mcp)",
       "Bash(cp ~/.claude/skills/ableton-mcp/SKILL.md /Users/livin2rave/my_private_code/ableton-mcp/.claude/skills/ableton-mcp/SKILL.md)",
       "Bash(rm -rf ~/.claude/skills/ableton-mcp && echo \"removed user-level copy\")",
-      "Edit(/.claude/skills/ableton-mcp/**)"
+      "Edit(/.claude/skills/ableton-mcp/**)",
+      "Bash(brew uninstall *)"
     ],
     "additionalDirectories": [
       "/Users/livin2rave/.claude/skills/ableton-mcp"

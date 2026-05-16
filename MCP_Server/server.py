@@ -1276,8 +1276,18 @@ def search_by_tags(
 
 # Main execution
 def main():
-    """Run the MCP server"""
-    mcp.run()
+    import argparse
+    import sys
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--server", action="store_true", help="Run as HTTP server instead of stdio")
+    parser.add_argument("--port", type=int, default=5006, help="HTTP server port (default: 5006)")
+    args = parser.parse_args()
+
+    if args.server:
+        mcp.run("streamable-http", host="0.0.0.0", port=args.port)
+    else:
+        logging.basicConfig(level=logging.INFO, stream=sys.stderr)
+        mcp.run()
 
 if __name__ == "__main__":
     main()
